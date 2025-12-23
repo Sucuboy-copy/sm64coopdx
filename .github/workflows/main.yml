@@ -1,88 +1,99 @@
-name: Build Windows 32-bit
+   build-windows-opengl:
+        if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build]') }}
+        runs-on: windows-latest
+        defaults:
+            run:
+                shell: msys2 {0}
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main ]
+            - name: Install dependencies
+              uses: msys2/setup-msys2@v2
+              with:
+                msystem: mingw64
+                update: true
+                install: >
+                    unzip
+                    make
+                    git
+                    mingw-w64-i686-gcc
+                    mingw-w64-x86_64-gcc
+                    mingw-w64-i686-glew
+                    mingw-w64-x86_64-glew
+                    mingw-w64-i686-SDL2
+                    mingw-w64-i686-SDL
+                    mingw-w64-x86_64-SDL2
+                    mingw-w64-x86_64-SDL
+                    python3
+                    zip
 
-jobs:
-  build-windows-32bit:
-    runs-on: windows-latest
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Setup MSYS2
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: MINGW32
-        update: true
-        install: mingw-w64-i686-gcc mingw-w64-i686-glew mingw-w64-i686-SDL2 make git python3 unzip
-    
-    - name: Check ROM
-      shell: msys2 {0}
-      run: |
-        if [ ! -f "baserom.us.z64" ]; then
-          echo "ERROR: baserom.us.z64 no encontrado"
-          exit 1
-        fi
-        echo "ROM encontrada"
-        sha1sum baserom.us.z64
-    
-    - name: Disable mapfile generation for 32-bit
-      shell: msys2 {0}
-      run: |
-        echo "Deshabilitando generacion de mapfile para 32-bit..."
-        # Comentar la linea del mapfile en el Makefile
-        sed -i 's/^\t@\$(PYTHON) tools\/clean_mapfile.py/\t@echo "Skipping mapfile generation for 32-bit"/' Makefile
-    
-    - name: Compile sm64coopdx
-      shell: msys2 {0}
-      run: |
-        echo "Compilando para Windows 32-bit..."
-        make TARGET_BITS=32 DISCORD_SDK=0 -j4 || true
-        
-        # Si falla el mapfile pero el exe existe, continuamos
-        if [ -f "build/us_pc/sm64coopdx.exe" ]; then
-          echo "Ejecutable generado correctamente (ignorando error de mapfile)"
-          exit 0
-        else
-          echo "ERROR: Fallo la compilacion"
-          exit 1
-        fi
-    
-    - name: Verify build
-      shell: msys2 {0}
-      run: |
-        echo "Verificando ejecutable..."
-        file build/us_pc/sm64coopdx.exe
-        ls -lh build/us_pc/sm64coopdx.exe
-        echo "Build completado!"
-    
-    - name: Package build
-      shell: msys2 {0}
-      run: |
-        echo "Empaquetando archivos..."
-        mkdir -p sm64coopdx-win32
-        cp build/us_pc/sm64coopdx.exe sm64coopdx-win32/
-        cp -r res sm64coopdx-win32/
-        cp -r lang sm64coopdx-win32/
-        if [ -d "mods" ]; then cp -r mods sm64coopdx-win32/; fi
-        
-        echo "Copiando DLLs necesarias..."
-        cp /mingw32/bin/SDL2.dll sm64coopdx-win32/ 2>/dev/null || echo "SDL2.dll no encontrado"
-        cp /mingw32/bin/glew32.dll sm64coopdx-win32/ 2>/dev/null || echo "glew32.dll no encontrado"
-        cp /mingw32/bin/libgcc_s_dw2-1.dll sm64coopdx-win32/ 2>/dev/null || echo "libgcc no encontrado"
-        cp /mingw32/bin/libstdc++-6.dll sm64coopdx-win32/ 2>/dev/null || echo "libstdc++ no encontrado"
-        cp /mingw32/bin/libwinpthread-1.dll sm64coopdx-win32/ 2>/dev/null || echo "libwinpthread no encontrado"
-        
-        echo "Contenido del paquete:"
-        ls -lh sm64coopdx-win32/
-    
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: sm64coopdx-windows-32bit
-        path: sm64coopdx-win32/
-        retention-days: 30
+            - name: Build the game
+              run: make -j$(nproc)
+
+            - name: Generate hash
+              run: |
+                cd tools
+                g++ -std=c++17 -o hash_file.exe hash_file.cpp
+                echo "::notice ::$(./hash_file.exe ../build/us_pc/sm64coopdx.exe)"
+            
+            - name: Zip the game
+              run: |
+                cd ./build/us_pc
+                zip -r sm64coopdx_Windows_OpenGL.zip dynos lang mods palettes coop.map discord_game_sdk.dll sm64coopdx.exe
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                name: sm64coopdx-windows-opengl
+                path: ./build/us_pc/sm64coopdx_Windows_OpenGL.zip
+
+    build-windows-directx:
+        if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build]') }}
+        runs-on: windows-latest
+        defaults:
+            run:
+                shell: msys2 {0}
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Install dependencies
+              uses: msys2/setup-msys2@v2
+              with:
+                msystem: mingw64
+                update: true
+                install: >
+                    unzip
+                    make
+                    git
+                    mingw-w64-i686-gcc
+                    mingw-w64-x86_64-gcc
+                    mingw-w64-i686-glew
+                    mingw-w64-x86_64-glew
+                    mingw-w64-i686-SDL2
+                    mingw-w64-i686-SDL
+                    mingw-w64-x86_64-SDL2
+                    mingw-w64-x86_64-SDL
+                    python3
+                    zip
+
+            - name: Build the game
+              run: make -j$(nproc) RENDER_API=D3D11 WINDOW_API=DXGI
+
+            - name: Generate hash
+              run: |
+                cd tools
+                g++ -std=c++17 -o hash_file.exe hash_file.cpp
+                echo "::notice ::$(./hash_file.exe ../build/us_pc/sm64coopdx.exe)"
+            
+            - name: Zip the game
+              run: |
+                cd ./build/us_pc
+                zip -r sm64coopdx_Windows_DirectX.zip dynos lang mods palettes coop.map discord_game_sdk.dll sm64coopdx.exe
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                name: sm64coopdx-windows-directx
+                path: ./build/us_pc/sm64coopdx_Windows_DirectX.zip
