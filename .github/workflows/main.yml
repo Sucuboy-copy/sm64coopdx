@@ -1,99 +1,271 @@
-   build-windows-opengl:
-        if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build]') }}
-        runs-on: windows-latest
-        defaults:
-            run:
-                shell: msys2 {0}
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
+name: Build Windows 32-bit (OpenGL + DirectX)
 
-            - name: Install dependencies
-              uses: msys2/setup-msys2@v2
-              with:
-                msystem: mingw64
-                update: true
-                install: >
-                    unzip
-                    make
-                    git
-                    mingw-w64-i686-gcc
-                    mingw-w64-x86_64-gcc
-                    mingw-w64-i686-glew
-                    mingw-w64-x86_64-glew
-                    mingw-w64-i686-SDL2
-                    mingw-w64-i686-SDL
-                    mingw-w64-x86_64-SDL2
-                    mingw-w64-x86_64-SDL
-                    python3
-                    zip
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  release:
+    types: [created]
 
-            - name: Build the game
-              run: make -j$(nproc)
+jobs:
+  build-windows-opengl-32bit:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW32
+        update: true
+        install: >-
+          unzip
+          make
+          git
+          mingw-w64-i686-gcc
+          mingw-w64-i686-glew
+          mingw-w64-i686-SDL2
+          mingw-w64-i686-SDL
+          python3
+          zip
+    
+    - name: Check ROM
+      run: |
+        if [ ! -f "baserom.us.z64" ]; then
+          echo "ERROR: baserom.us.z64 no encontrado"
+          echo "Por favor sube la ROM al repositorio"
+          exit 1
+        fi
+        echo "ROM encontrada"
+        sha1sum baserom.us.z64
+    
+    - name: Disable mapfile for 32-bit
+      run: |
+        sed -i 's/^\t@\$(PYTHON) tools\/clean_mapfile.py/\t@echo "Skipping mapfile for 32-bit"/' Makefile
+    
+    - name: Build OpenGL 32-bit
+      run: |
+        echo "Compilando OpenGL 32-bit..."
+        make TARGET_BITS=32 RENDER_API=GL WINDOW_API=SDL2 -j$(nproc) || true
+        
+        if [ -f "build/us_pc/sm64coopdx.exe" ]; then
+          echo "Build exitoso!"
+        else
+          echo "ERROR en compilacion"
+          exit 1
+        fi
+    
+    - name: Generate hash
+      run: |
+        cd tools
+        i686-w64-mingw32-g++ -std=c++17 -o hash_file.exe hash_file.cpp 2>/dev/null || echo "Hash generation skipped"
+        if [ -f "hash_file.exe" ]; then
+          ./hash_file.exe ../build/us_pc/sm64coopdx.exe || true
+        fi
+    
+    - name: Copy required DLLs
+      run: |
+        cd build/us_pc
+        cp /mingw32/bin/SDL2.dll .
+        cp /mingw32/bin/glew32.dll .
+        cp /mingw32/bin/libgcc_s_dw2-1.dll .
+        cp /mingw32/bin/libstdc++-6.dll .
+        cp /mingw32/bin/libwinpthread-1.dll .
+    
+    - name: Zip the game
+      run: |
+        cd ./build/us_pc
+        zip -r sm64coopdx_Windows_OpenGL_32bit.zip \
+          dynos \
+          lang \
+          mods \
+          palettes \
+          res \
+          sm64coopdx.exe \
+          *.dll
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: sm64coopdx-windows-opengl-32bit
+        path: ./build/us_pc/sm64coopdx_Windows_OpenGL_32bit.zip
+        retention-days: 30
 
-            - name: Generate hash
-              run: |
-                cd tools
-                g++ -std=c++17 -o hash_file.exe hash_file.cpp
-                echo "::notice ::$(./hash_file.exe ../build/us_pc/sm64coopdx.exe)"
-            
-            - name: Zip the game
-              run: |
-                cd ./build/us_pc
-                zip -r sm64coopdx_Windows_OpenGL.zip dynos lang mods palettes coop.map discord_game_sdk.dll sm64coopdx.exe
+  build-windows-directx-32bit:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW32
+        update: true
+        install: >-
+          unzip
+          make
+          git
+          mingw-w64-i686-gcc
+          mingw-w64-i686-glew
+          mingw-w64-i686-SDL2
+          mingw-w64-i686-SDL
+          python3
+          zip
+    
+    - name: Check ROM
+      run: |
+        if [ ! -f "baserom.us.z64" ]; then
+          echo "ERROR: baserom.us.z64 no encontrado"
+          exit 1
+        fi
+        echo "ROM encontrada"
+        sha1sum baserom.us.z64
+    
+    - name: Disable mapfile for 32-bit
+      run: |
+        sed -i 's/^\t@\$(PYTHON) tools\/clean_mapfile.py/\t@echo "Skipping mapfile for 32-bit"/' Makefile
+    
+    - name: Build DirectX 32-bit
+      run: |
+        echo "Compilando DirectX 32-bit..."
+        make TARGET_BITS=32 RENDER_API=D3D11 WINDOW_API=DXGI -j$(nproc) || true
+        
+        if [ -f "build/us_pc/sm64coopdx.exe" ]; then
+          echo "Build exitoso!"
+        else
+          echo "ERROR en compilacion"
+          exit 1
+        fi
+    
+    - name: Generate hash
+      run: |
+        cd tools
+        i686-w64-mingw32-g++ -std=c++17 -o hash_file.exe hash_file.cpp 2>/dev/null || echo "Hash generation skipped"
+        if [ -f "hash_file.exe" ]; then
+          ./hash_file.exe ../build/us_pc/sm64coopdx.exe || true
+        fi
+    
+    - name: Copy required DLLs
+      run: |
+        cd build/us_pc
+        cp /mingw32/bin/libgcc_s_dw2-1.dll .
+        cp /mingw32/bin/libstdc++-6.dll .
+        cp /mingw32/bin/libwinpthread-1.dll .
+    
+    - name: Zip the game
+      run: |
+        cd ./build/us_pc
+        zip -r sm64coopdx_Windows_DirectX_32bit.zip \
+          dynos \
+          lang \
+          mods \
+          palettes \
+          res \
+          sm64coopdx.exe \
+          *.dll
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: sm64coopdx-windows-directx-32bit
+        path: ./build/us_pc/sm64coopdx_Windows_DirectX_32bit.zip
+        retention-days: 30
 
-            - name: Upload artifact
-              uses: actions/upload-artifact@v4
-              with:
-                name: sm64coopdx-windows-opengl
-                path: ./build/us_pc/sm64coopdx_Windows_OpenGL.zip
-
-    build-windows-directx:
-        if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[build]') }}
-        runs-on: windows-latest
-        defaults:
-            run:
-                shell: msys2 {0}
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
-
-            - name: Install dependencies
-              uses: msys2/setup-msys2@v2
-              with:
-                msystem: mingw64
-                update: true
-                install: >
-                    unzip
-                    make
-                    git
-                    mingw-w64-i686-gcc
-                    mingw-w64-x86_64-gcc
-                    mingw-w64-i686-glew
-                    mingw-w64-x86_64-glew
-                    mingw-w64-i686-SDL2
-                    mingw-w64-i686-SDL
-                    mingw-w64-x86_64-SDL2
-                    mingw-w64-x86_64-SDL
-                    python3
-                    zip
-
-            - name: Build the game
-              run: make -j$(nproc) RENDER_API=D3D11 WINDOW_API=DXGI
-
-            - name: Generate hash
-              run: |
-                cd tools
-                g++ -std=c++17 -o hash_file.exe hash_file.cpp
-                echo "::notice ::$(./hash_file.exe ../build/us_pc/sm64coopdx.exe)"
-            
-            - name: Zip the game
-              run: |
-                cd ./build/us_pc
-                zip -r sm64coopdx_Windows_DirectX.zip dynos lang mods palettes coop.map discord_game_sdk.dll sm64coopdx.exe
-
-            - name: Upload artifact
-              uses: actions/upload-artifact@v4
-              with:
-                name: sm64coopdx-windows-directx
-                path: ./build/us_pc/sm64coopdx_Windows_DirectX.zip
+  create-release:
+    needs: [build-windows-opengl-32bit, build-windows-directx-32bit]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Download OpenGL artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: sm64coopdx-windows-opengl-32bit
+        path: ./artifacts
+    
+    - name: Download DirectX artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: sm64coopdx-windows-directx-32bit
+        path: ./artifacts
+    
+    - name: Get current date
+      id: date
+      run: echo "date=$(date +'%Y-%m-%d-%H%M')" >> $GITHUB_OUTPUT
+    
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: build-32bit-${{ steps.date.outputs.date }}
+        release_name: SM64 Coop Deluxe 32-bit - ${{ steps.date.outputs.date }}
+        body: |
+          ## 🎮 Super Mario 64 Coop Deluxe - Windows 32-bit
+          
+          Compilación automática para Windows de 32 bits.
+          
+          ### 📦 Versiones Disponibles:
+          
+          - **OpenGL 32-bit**: Mejor compatibilidad con hardware antiguo
+          - **DirectX 32-bit**: Mejor rendimiento en Windows moderno
+          
+          ### 💡 ¿Cuál descargar?
+          
+          - **¿Tienes Windows 10/11 moderno?** → Descarga **DirectX**
+          - **¿Tienes hardware antiguo o drivers limitados?** → Descarga **OpenGL**
+          - **¿No estás seguro?** → Prueba **DirectX** primero, si crashea usa **OpenGL**
+          
+          ### 🔧 Requisitos:
+          
+          - Visual C++ Redistributable x86: https://aka.ms/vs/17/release/vc_redist.x86.exe
+          - Windows 7 o superior
+          
+          ### 🐛 Si crashea al iniciar:
+          
+          1. Instala Visual C++ Redistributable (link arriba)
+          2. Ejecuta como administrador
+          3. Desactiva el antivirus temporalmente
+          4. Prueba la otra versión (OpenGL ↔ DirectX)
+          
+          ### 📝 Notas:
+          
+          - Commit: ${{ github.sha }}
+          - Fecha: ${{ steps.date.outputs.date }}
+          - Arquitectura: x86 (32-bit)
+        draft: false
+        prerelease: false
+    
+    - name: Upload OpenGL Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./artifacts/sm64coopdx_Windows_OpenGL_32bit.zip
+        asset_name: sm64coopdx_Windows_OpenGL_32bit.zip
+        asset_content_type: application/zip
+    
+    - name: Upload DirectX Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./artifacts/sm64coopdx_Windows_DirectX_32bit.zip
+        asset_name: sm64coopdx_Windows_DirectX_32bit.zip
+        asset_content_type: application/zip
