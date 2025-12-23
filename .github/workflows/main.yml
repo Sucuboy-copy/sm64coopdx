@@ -18,43 +18,40 @@ jobs:
       with:
         msystem: MINGW32
         update: true
-        install: >-
-          mingw-w64-i686-gcc
-          mingw-w64-i686-glew
-          mingw-w64-i686-SDL2
-          make
-          git
-          python3
-          unzip
+        install: mingw-w64-i686-gcc mingw-w64-i686-glew mingw-w64-i686-SDL2 make git python3 unzip
     
     - name: Check ROM
       shell: msys2 {0}
       run: |
         if [ ! -f "baserom.us.z64" ]; then
-          echo "❌ ERROR: baserom.us.z64 no encontrado"
+          echo "ERROR: baserom.us.z64 no encontrado"
           exit 1
         fi
-        echo "✅ ROM encontrada"
+        echo "ROM encontrada"
         sha1sum baserom.us.z64
     
     - name: Compile sm64coopdx
       shell: msys2 {0}
       run: |
-        echo "🔨 Compilando para Windows 32-bit..."
+        echo "Compilando para Windows 32-bit..."
         make TARGET_BITS=32 DISCORD_SDK=0 -j4
     
     - name: Package build
       shell: msys2 {0}
       run: |
-        echo "📦 Empaquetando archivos..."
+        echo "Empaquetando archivos..."
         mkdir -p sm64coopdx-win32
         cp build/us_pc/sm64coopdx.exe sm64coopdx-win32/
         cp -r res sm64coopdx-win32/
         cp -r lang sm64coopdx-win32/
-        cp -r mods sm64coopdx-win32/ 2>/dev/null || true
+        if [ -d "mods" ]; then cp -r mods sm64coopdx-win32/; fi
         
-        # Copiar DLLs necesarias
-        ldd build/us_pc/sm64coopdx.exe | grep mingw | awk '{print $3}' | xargs -I {} cp {} sm64coopdx-win32/ || true
+        echo "Copiando DLLs necesarias..."
+        cp /mingw32/bin/SDL2.dll sm64coopdx-win32/ 2>/dev/null || echo "SDL2.dll no encontrado"
+        cp /mingw32/bin/glew32.dll sm64coopdx-win32/ 2>/dev/null || echo "glew32.dll no encontrado"
+        cp /mingw32/bin/libgcc_s_dw2-1.dll sm64coopdx-win32/ 2>/dev/null || echo "libgcc no encontrado"
+        cp /mingw32/bin/libstdc++-6.dll sm64coopdx-win32/ 2>/dev/null || echo "libstdc++ no encontrado"
+        cp /mingw32/bin/libwinpthread-1.dll sm64coopdx-win32/ 2>/dev/null || echo "libwinpthread no encontrado"
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
@@ -62,77 +59,3 @@ jobs:
         name: sm64coopdx-windows-32bit
         path: sm64coopdx-win32/
         retention-days: 30
-```
-
-5. **En "Name", cámbiale el nombre** a: `.github/workflows/build-win32.yml`
-
-6. Haz clic en **"Commit changes..."**
-
-7. Selecciona **"Commit directly to the main branch"**
-
-8. Haz clic en **"Commit changes"**
-
----
-
-### PASO 4: Ejecutar la Compilación
-
-1. **Ve a la pestaña "Actions"** de tu repositorio
-
-2. En la barra lateral izquierda, verás **"Build Windows 32-bit"**
-
-3. Haz clic en ese workflow
-
-4. Haz clic en el botón **"Run workflow"** (botón azul en el lado derecho)
-
-5. Asegúrate que diga "Branch: main" y haz clic en **"Run workflow"**
-
-🎉 ¡La compilación ha comenzado!
-
----
-
-### PASO 5: Monitorear el Progreso
-
-1. Verás aparecer una nueva ejecución con un círculo amarillo girando
-
-2. Haz clic en ella para ver los detalles
-
-3. Haz clic en **"build-windows-32bit"** para ver los logs en tiempo real
-
-4. Verás 5 pasos ejecutándose:
-   - ✅ Checkout repository (~10 segundos)
-   - ✅ Setup MSYS2 (~3-5 minutos)
-   - ✅ Check ROM (~5 segundos)
-   - ✅ Compile sm64coopdx (~8-12 minutos) ⏱️ **Este es el más largo**
-   - ✅ Package build (~30 segundos)
-   - ✅ Upload artifact (~1 minuto)
-
-⏱️ **Tiempo total estimado: 15-20 minutos**
-
----
-
-### PASO 6: Descargar tu Ejecutable
-
-Una vez que todos los pasos tengan ✅ verde:
-
-1. **Baja hasta el final** de la página de la ejecución
-
-2. Verás una sección **"Artifacts"**
-
-3. Haz clic en **"sm64coopdx-windows-32bit"**
-
-4. Se descargará un archivo ZIP (~50-100 MB)
-
-5. **Descomprime el ZIP** en tu PC
-
-6. **Dentro encontrarás:**
-```
-   sm64coopdx-win32/
-   ├── sm64coopdx.exe          ← Tu ejecutable
-   ├── SDL2.dll
-   ├── glew32.dll
-   ├── libgcc_s_dw2-1.dll
-   ├── libstdc++-6.dll
-   ├── libwinpthread-1.dll
-   ├── res/                     ← Recursos del juego
-   ├── lang/                    ← Traducciones
-   └── mods/                    ← Carpeta de mods
